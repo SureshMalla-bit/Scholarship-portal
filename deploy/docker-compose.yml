@@ -1,0 +1,57 @@
+# Runs the whole portal on one server: PostgreSQL, the app (website + API) and Caddy for HTTPS.
+# Used by deploy/setup.sh; settings come from the .env file next to this one.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: scholarship_db
+      POSTGRES_USER: scholarship
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scholarship -d scholarship_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    image: scholarship-portal:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: scholarship_db
+      DB_USERNAME: scholarship
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@scholarship.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    # Only reachable from the server itself; Caddy (or your own nginx) forwards the public traffic
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+
+  # HTTPS with an automatic Let's Encrypt certificate. Left out when ports 80/443 are already used on the server.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    depends_on: [app]
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:
