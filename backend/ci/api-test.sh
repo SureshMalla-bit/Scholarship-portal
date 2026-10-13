@@ -8,7 +8,14 @@ pass() { echo "PASS  $1"; }
 fail() { echo "FAIL  $1"; exit 1; }
 code() { curl -sk -o /tmp/body -w "%{http_code}" "$@"; }
 
-[ "$(curl -sk $API/scholarships | jq length)" -ge "${MIN_SCHOLARSHIPS:-9}" ] && pass "sample scholarships loaded" || fail "sample scholarships"
+# The server answers before it has finished adding the sample data, so wait for it (up to 60 seconds)
+COUNT=0
+for _ in $(seq 1 30); do
+  COUNT=$(curl -sk $API/scholarships | jq length 2>/dev/null || echo 0)
+  [ "$COUNT" -ge "${MIN_SCHOLARSHIPS:-9}" ] && break
+  sleep 2
+done
+[ "$COUNT" -ge "${MIN_SCHOLARSHIPS:-9}" ] && pass "sample scholarships loaded" || fail "sample scholarships (found $COUNT)"
 
 [ "$(code -X POST $API/auth/login -H "$J" -d "{\"email\":\"admin@scholarship.com\",\"password\":\"${ADMIN_PASSWORD:-admin123}\"}")" = 200 ] \
   && [ "$(jq -r .role /tmp/body)" = ADMIN ] && pass "admin login" || fail "admin login"
