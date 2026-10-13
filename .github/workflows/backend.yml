@@ -1,0 +1,50 @@
+# Builds the backend and checks the main API calls against a real PostgreSQL database
+name: Backend build and API test
+
+on:
+  push:
+    paths: ["backend/**", ".github/workflows/backend.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: scholarship_db
+          POSTGRES_USER: scholarship
+          POSTGRES_PASSWORD: scholarship
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scholarship" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Build
+        run: mvn -B -q -DskipTests package
+      - name: Start the backend
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/scholarship_db
+          DB_USERNAME: scholarship
+          DB_PASSWORD: scholarship
+        run: |
+          nohup java -jar target/*.jar > app.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:8080/api/scholarships > /dev/null && exit 0; sleep 2; done
+          cat app.log; exit 1
+      - name: Test the API
+        run: bash ci/api-test.sh http://localhost:8080/api
+      - name: Backend log
+        if: always()
+        run: tail -n 80 app.log || true
