@@ -10,6 +10,23 @@ This is a website to check the statuses of all those scholarships (whether they 
 | `deploy/` | Docker Compose stack for your own server (database, app, HTTPS) and its setup script | |
 | `render.yaml` | Render Blueprint, if you prefer Render to your own server | |
 
+## Go live with Coolify (if your server runs Coolify)
+Coolify builds the root `Dockerfile` (website + API in one service) and gives it HTTPS.
+1. **Database:** Project > **+ New** > **Database** > **PostgreSQL** > **Start**. Copy its **Postgres URL (internal)**.
+2. **App:** same project > **+ New** > **Private Repository (with GitHub App)** (create the GitHub App when asked and give it
+   access to this repository) > pick `Scholarship-portal`, branch `main`.
+   - Build Pack: **Dockerfile**, Base Directory `/`, Dockerfile location `/Dockerfile`
+   - Ports Exposes: **8080**
+3. **Environment Variables** of the app:
+   - `DATABASE_URL` = the internal Postgres URL from step 1 (the `postgres://...` form works as is)
+   - `ADMIN_PASSWORD` = the admin login password
+   - `JWT_SECRET` = any long random text (keeps people logged in across redeploys)
+4. **Domains:** keep the generated `http://....sslip.io` address, or change `http` to `https` for a certificate.
+5. **Deploy**. The first build takes a few minutes; logs are under **Deployments**.
+
+Health check (optional): path `/api/scholarships`, port 8080.
+Coolify redeploys on every push to `main` when its GitHub App is connected.
+
 ## Go live on your own server (VPS)
 Every push to `main` deploys automatically: GitHub builds the app, copies it to the server over SSH and restarts it
 (`.github/workflows/deploy.yml`). The server runs PostgreSQL, the app and Caddy (free HTTPS certificate) with Docker.
