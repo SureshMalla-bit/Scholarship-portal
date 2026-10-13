@@ -3,7 +3,7 @@
 Spring Boot REST API with MySQL. The React frontend is in `../frontend`.
 
 ## Tech
-Java 17, Spring Boot 3, Spring Web, Spring Data JPA, Bean Validation, BCrypt (spring-security-crypto), MySQL.
+Java 17, Spring Boot 3, Spring Web, Spring Data JPA, Bean Validation, BCrypt (spring-security-crypto), JWT login tokens, MySQL / PostgreSQL.
 
 ## Run on your laptop
 1. Install JDK 17+, Maven and MySQL. Start MySQL.
@@ -24,21 +24,26 @@ On first start it creates:
     service/      Business rules  (deadline, gender, category, duplicate checks)
     controller/   REST endpoints
     exception/    Error messages returned as JSON
-    config/       CORS, BCrypt, sample data
+    config/       CORS, BCrypt, sample data, serving the React build
+    security/     Login tokens (JWT) and the checks for who may call each URL
 
 ## REST API
+Login returns a `token`. Send it as `Authorization: Bearer <token>` on every other call.
+Without a token only login, register and reading scholarships work (401 otherwise); a student calling an admin URL,
+or another student's data, gets 403.
+
 | Method | URL | Who | Purpose |
 |---|---|---|---|
 | POST | /api/auth/register | Student | Create account |
-| POST | /api/auth/login | Both | Log in, returns user with role |
-| GET | /api/scholarships | Both | List scholarships |
+| POST | /api/auth/login | Both | Log in, returns user with role and token |
+| GET | /api/scholarships | Anyone | List scholarships |
 | POST | /api/scholarships | Admin | Add scholarship |
 | PUT | /api/scholarships/{id} | Admin | Edit scholarship |
 | DELETE | /api/scholarships/{id} | Admin | Delete scholarship (and its applications) |
 | GET | /api/students | Admin | List students |
-| GET | /api/students/{id} | Both | One student / own profile |
+| GET | /api/students/{id} | Admin, or that student | One student / own profile |
 | POST | /api/students | Admin | Add student |
-| PUT | /api/students/{id} | Both | Edit student / own profile |
+| PUT | /api/students/{id} | Admin, or that student | Edit student / own profile |
 | DELETE | /api/students/{id} | Admin | Delete student (and their applications) |
 | GET | /api/applications | Admin | All applications |
 | GET | /api/applications/student/{studentId} | Student | Own applications |
@@ -53,26 +58,19 @@ On first start it creates:
 - Student's gender and category must match the scholarship
 - Only pending applications can be edited or withdrawn, and only by their owner
 - Passwords are stored as BCrypt hashes, never as plain text
+- Every call is checked against the login token: role and ownership come from the token, not from the request
 
-## Deploy on Render
-1. Push this repository to GitHub.
-2. Create a database that Render can reach (for example a Render PostgreSQL database, or a hosted MySQL).
-3. On Render: New > Web Service > connect this repository and set Root Directory to `backend`. Render detects the `Dockerfile`.
-4. Add environment variables:
-   - `DB_URL` - JDBC address, for PostgreSQL like `jdbc:postgresql://HOST:5432/DBNAME`
-     (Render shows a `postgresql://user:pass@host/db` address: use only the host and database name here)
-   - `DB_USERNAME`, `DB_PASSWORD`
-   - `FRONTEND_URL` - your Vercel/Netlify address (or leave unset to allow any)
-   - `ADMIN_PASSWORD` - a new admin password
-5. After deploy, the API is at `https://YOUR-SERVICE.onrender.com/api`.
-
-Free Render services sleep when unused; the first request can take about a minute.
-
-## Known limitations
-- Login returns the user but does not issue a token, so the API itself does not block a student from calling admin URLs.
-  Adding Spring Security with JWT is the next step.
+## Deploy
+The easiest way is the Render Blueprint at the repository root (see the main README): it deploys this API together with
+the React app as one service. To deploy only the API, create a Render web service with Root Directory `backend`
+(it uses `backend/Dockerfile`) and set these environment variables:
+- `DB_URL` - JDBC address, like `jdbc:postgresql://HOST:5432/DBNAME` (or `DB_HOST`, `DB_PORT`, `DB_NAME` separately)
+- `DB_USERNAME`, `DB_PASSWORD`
+- `JWT_SECRET` - long random text used to sign login tokens
+- `ADMIN_PASSWORD` - the admin password
+- `FRONTEND_URL` - the website's address, if it is hosted somewhere else
 
 ## Automatic check (GitHub Actions)
 Every push that changes `backend/` runs `.github/workflows/backend.yml` (at the repository root): it builds the project, starts it against a PostgreSQL database
-and runs `ci/api-test.sh`, which calls the main API endpoints (login, register, CRUD, apply, approve, rules).
+and runs `ci/api-test.sh`, which calls the main API endpoints (login, register, CRUD, apply, approve, rules, and the token checks).
 The result shows on the repository's **Actions** tab.

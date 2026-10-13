@@ -1,6 +1,7 @@
 package com.scholarship.management.controller;
 
 import com.scholarship.management.model.Scholarship;
+import com.scholarship.management.security.CurrentUser;
 import com.scholarship.management.service.ScholarshipService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -30,18 +31,22 @@ public class ScholarshipController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Scholarship create(@Valid @RequestBody Scholarship scholarship) {
+    public Scholarship create(@Valid @RequestBody Scholarship scholarship, @RequestAttribute(CurrentUser.ATTRIBUTE) CurrentUser me) {
+        me.requireAdmin();
         return scholarshipService.create(scholarship);
     }
 
     @PutMapping("/{id}")
-    public Scholarship update(@PathVariable Long id, @Valid @RequestBody Scholarship scholarship) {
+    public Scholarship update(@PathVariable Long id, @Valid @RequestBody Scholarship scholarship,
+                              @RequestAttribute(CurrentUser.ATTRIBUTE) CurrentUser me) {
+        me.requireAdmin();
         return scholarshipService.update(id, scholarship);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
+    public void delete(@PathVariable Long id, @RequestAttribute(CurrentUser.ATTRIBUTE) CurrentUser me) {
+        me.requireAdmin();
         scholarshipService.delete(id);
     }
 }

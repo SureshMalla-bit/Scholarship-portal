@@ -1,0 +1,29 @@
+# Builds the production image (website + API) exactly as Render does, so a broken deploy shows up here first
+name: Production image
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t scholarship-portal .
+      - name: Start the image and check the website and API
+        run: |
+          docker network create net
+          docker run -d --name db --network net -e POSTGRES_DB=scholarship_db -e POSTGRES_USER=scholarship -e POSTGRES_PASSWORD=scholarship postgres:16
+          docker run -d --name app --network net -p 8080:8080 \
+            -e DB_HOST=db -e DB_PORT=5432 -e DB_NAME=scholarship_db -e DB_USERNAME=scholarship -e DB_PASSWORD=scholarship \
+            -e JWT_SECRET=ci-secret scholarship-portal
+          for i in $(seq 1 60); do curl -sf http://localhost:8080/api/scholarships > /dev/null && break; sleep 2; done
+          curl -sf http://localhost:8080/api/scholarships | jq length
+          curl -sf http://localhost:8080/admin | grep -q '<div id="root">'
+          bash backend/ci/api-test.sh http://localhost:8080/api
+      - name: App log
+        if: always()
+        run: docker logs app 2>&1 | tail -n 80 || true

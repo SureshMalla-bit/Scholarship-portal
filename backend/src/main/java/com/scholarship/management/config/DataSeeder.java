@@ -5,6 +5,8 @@ import com.scholarship.management.model.Scholarship;
 import com.scholarship.management.model.User;
 import com.scholarship.management.repository.ScholarshipRepository;
 import com.scholarship.management.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -19,6 +21,8 @@ import java.util.List;
  */
 @Component
 public class DataSeeder implements CommandLineRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
 
     private final UserRepository users;
     private final ScholarshipRepository scholarships;
@@ -39,6 +43,9 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) {
         if (!users.existsByRole(Role.ADMIN)) {
+            if ("admin123".equals(adminPassword)) {
+                log.warn("Admin account created with the default password admin123. Set ADMIN_PASSWORD before deploying.");
+            }
             User admin = new User();
             admin.setName("Administrator");
             admin.setEmail(adminEmail);

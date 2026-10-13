@@ -1,0 +1,34 @@
+# Render Blueprint: creates the database and the web service (website + API) in one go.
+# Render dashboard > New > Blueprint > pick this repository > fill in ADMIN_PASSWORD > Apply.
+databases:
+  - name: scholarship-db
+    databaseName: scholarship_db
+    user: scholarship
+    plan: free
+
+services:
+  - type: web
+    name: scholarship-portal
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/scholarships
+    autoDeploy: true
+    envVars:
+      - key: DB_HOST
+        fromDatabase: { name: scholarship-db, property: host }
+      - key: DB_PORT
+        fromDatabase: { name: scholarship-db, property: port }
+      - key: DB_NAME
+        fromDatabase: { name: scholarship-db, property: database }
+      - key: DB_USERNAME
+        fromDatabase: { name: scholarship-db, property: user }
+      - key: DB_PASSWORD
+        fromDatabase: { name: scholarship-db, property: password }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@scholarship.com
+      - key: ADMIN_PASSWORD
+        sync: false
