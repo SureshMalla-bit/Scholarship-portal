@@ -1,0 +1,75 @@
+# Deploys to your own server on every push to main (and on demand from the Actions tab).
+# Builds the image here on GitHub, copies it to the server over SSH and restarts the portal there,
+# so the server only needs SSH access and enough memory to run the app (about 1 GB).
+#
+# Repository secrets (Settings > Secrets and variables > Actions):
+#   VPS_HOST        server IP or hostname                       (required)
+#   VPS_USER        SSH user: root, or a user with passwordless sudo   (required)
+#   VPS_SSH_KEY     private SSH key that can log in as that user       (required)
+#   VPS_PORT        SSH port, if not 22                          (optional)
+#   DOMAIN          e.g. scholarships.example.com - first deploy only; default <ip>.sslip.io (optional)
+#   ADMIN_PASSWORD  admin login password - first deploy only; default generated on the server (optional)
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy-vps
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+    steps:
+      - name: Check secrets
+        if: env.VPS_HOST == ''
+        run: echo "::notice::VPS_HOST secret is not set - skipping deploy. See .github/workflows/deploy.yml for setup."
+
+      - uses: actions/checkout@v4
+        if: env.VPS_HOST != ''
+
+      - name: Build image
+        if: env.VPS_HOST != ''
+        run: docker build -t scholarship-portal:latest .
+
+      - name: Set up SSH
+        if: env.VPS_HOST != ''
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          USER: ${{ secrets.VPS_USER }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "$PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          cat > ~/.ssh/config <<CFG
+          Host vps
+            HostName $VPS_HOST
+            Port $PORT
+            User $USER
+            IdentityFile ~/.ssh/id_deploy
+            ServerAliveInterval 30
+          CFG
+
+      - name: Copy deploy files and install Docker if missing
+        if: env.VPS_HOST != ''
+        run: |
+          tar czf - -C deploy . | ssh vps 'mkdir -p ~/scholarship-portal && tar xzf - -C ~/scholarship-portal'
+          ssh vps 'bash ~/scholarship-portal/setup.sh install'
+
+      - name: Upload image
+        if: env.VPS_HOST != ''
+        run: |
+          docker save scholarship-portal:latest | gzip | \
+            ssh vps 'if [ "$(id -u)" -eq 0 ]; then S=""; else S="sudo -n"; fi; gunzip | $S docker load'
+
+      - name: Start portal
+        if: env.VPS_HOST != ''
+        env:
+          DOMAIN: ${{ secrets.DOMAIN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          ssh vps "DOMAIN=$(printf %q "$DOMAIN") ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") bash ~/scholarship-portal/setup.sh up"

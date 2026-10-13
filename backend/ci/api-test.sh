@@ -6,11 +6,11 @@ API=${1:-http://localhost:8080/api}
 J='Content-Type: application/json'
 pass() { echo "PASS  $1"; }
 fail() { echo "FAIL  $1"; exit 1; }
-code() { curl -s -o /tmp/body -w "%{http_code}" "$@"; }
+code() { curl -sk -o /tmp/body -w "%{http_code}" "$@"; }
 
-[ "$(curl -s $API/scholarships | jq length)" -ge "${MIN_SCHOLARSHIPS:-9}" ] && pass "sample scholarships loaded" || fail "sample scholarships"
+[ "$(curl -sk $API/scholarships | jq length)" -ge "${MIN_SCHOLARSHIPS:-9}" ] && pass "sample scholarships loaded" || fail "sample scholarships"
 
-[ "$(code -X POST $API/auth/login -H "$J" -d '{"email":"admin@scholarship.com","password":"admin123"}')" = 200 ] \
+[ "$(code -X POST $API/auth/login -H "$J" -d "{\"email\":\"admin@scholarship.com\",\"password\":\"${ADMIN_PASSWORD:-admin123}\"}")" = 200 ] \
   && [ "$(jq -r .role /tmp/body)" = ADMIN ] && pass "admin login" || fail "admin login"
 [ "$(jq -r '.password // "hidden"' /tmp/body)" = hidden ] && pass "password not returned" || fail "password leaked"
 ADMIN="Authorization: Bearer $(jq -r .token /tmp/body)"
@@ -41,7 +41,7 @@ NID=$(jq -r .id /tmp/body)
   && [ "$(jq -r .amount /tmp/body)" = "Rs 2,000" ] && pass "edit scholarship" || fail "edit scholarship"
 
 # Student applies, edits, admin approves
-PRAGATI=$(curl -s $API/scholarships | jq '[.[] | select(.gender=="Female")][0].id')
+PRAGATI=$(curl -sk $API/scholarships | jq '[.[] | select(.gender=="Female")][0].id')
 A='{"studentId":'$SID',"scholarshipId":'$NID',"course":"B.Tech ECE","percentage":82.5,"annualIncome":200000}'
 [ "$(code -X POST $API/applications -H "$J" -H "$STU" -d "$A")" = 201 ] && pass "apply" || { cat /tmp/body; fail "apply"; }
 AID=$(jq -r .id /tmp/body)
@@ -49,11 +49,11 @@ AID=$(jq -r .id /tmp/body)
 [ "$(code -X POST $API/applications -H "$J" -H "$STU" -d '{"studentId":'$SID',"scholarshipId":'$PRAGATI',"course":"B.Tech","percentage":80,"annualIncome":1}')" = 400 ] \
   && pass "gender rule (male student, female-only scholarship)" || fail "gender rule"
 [ "$(code -X PUT $API/applications/$AID -H "$J" -H "$STU" -d "${A/82.5/90}")" = 200 ] && pass "edit pending application" || fail "edit application"
-[ "$(curl -s $API/applications/student/$SID -H "$STU" | jq length)" = 1 ] && pass "student sees own application" || fail "own applications"
+[ "$(curl -sk $API/applications/student/$SID -H "$STU" | jq length)" = 1 ] && pass "student sees own application" || fail "own applications"
 [ "$(code -X PATCH "$API/applications/$AID/status?value=APPROVED" -H "$STU")" = 403 ] && pass "student cannot approve" || fail "student approved"
 [ "$(code -X PATCH "$API/applications/$AID/status?value=APPROVED" -H "$ADMIN")" = 200 ] \
   && [ "$(jq -r .status /tmp/body)" = APPROVED ] && pass "admin approves" || fail "approve"
-[ "$(curl -s $API/applications -H "$ADMIN" | jq length)" -ge 1 ] && pass "admin sees all applications" || fail "all applications"
+[ "$(curl -sk $API/applications -H "$ADMIN" | jq length)" -ge 1 ] && pass "admin sees all applications" || fail "all applications"
 
 # Student profile update, admin student CRUD, deletes
 U='{"name":"Test Student 2","email":"student@test.com","password":"","gender":"Male","category":"SC","phone":"8888888888","course":"B.Tech ECE"}'
@@ -61,7 +61,7 @@ U='{"name":"Test Student 2","email":"student@test.com","password":"","gender":"M
   && pass "update profile" || { cat /tmp/body; fail "update profile"; }
 [ "$(code -X POST $API/auth/login -H "$J" -d '{"email":"student@test.com","password":"pass123"}')" = 200 ] \
   && pass "old password still works after profile edit" || fail "password kept"
-[ "$(curl -s $API/students -H "$ADMIN" | jq length)" -ge 1 ] && pass "admin lists students" || fail "list students"
+[ "$(curl -sk $API/students -H "$ADMIN" | jq length)" -ge 1 ] && pass "admin lists students" || fail "list students"
 [ "$(code -X DELETE $API/scholarships/$NID -H "$ADMIN")" -lt 300 ] && pass "delete scholarship (and its applications)" || { cat /tmp/body; fail "delete scholarship"; }
 [ "$(code -X DELETE $API/students/$SID -H "$ADMIN")" -lt 300 ] && pass "delete student" || { cat /tmp/body; fail "delete student"; }
 echo "All API checks passed."
